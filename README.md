@@ -1,5 +1,5 @@
 # DocsToNotes
-The auction of this program is to create readable notes from documents and research papers which shows the most relevant and needed information in a more user friendly readable manner
+The function of this program is to create readable notes from documents and research papers that show the most relevant and needed information in a more user-friendly readable manner.
 
 ### Current Functions
 
@@ -16,5 +16,5 @@ The auction of this program is to create readable notes from documents and resea
 
 ### Set-up
 Uses Python 3.9.7 
-See packages and plugins from [requirements.txt](https://github.com/ShifatSarwar/DocsToNotes/blob/main/requirements.txt)file
+See packages and plugins from [requirements.txt](https://github.com/ShifatSarwar/DocsToNotes/blob/main/requirements.txt) file
 

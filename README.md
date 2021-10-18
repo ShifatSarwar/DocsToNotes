@@ -16,5 +16,6 @@ The function of this program is to create readable notes from documents and rese
 
 ### Set-up
 Uses Python 3.9.7 
+
 See packages and plugins from [requirements.txt](https://github.com/ShifatSarwar/DocsToNotes/blob/main/requirements.txt) file
 

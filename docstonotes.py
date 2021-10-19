@@ -7,104 +7,203 @@ Original file is located at
     https://colab.research.google.com/drive/19OhM1ILeUQS0dGS8_iNNLuti9X8CkjQi
 """
 
+# Sentence-Transformer will be used to compare sentence similarity
 !pip install sentence-transformers
 
+# For reading PDF file
 !pip install PyMuPDF
 
+# Required to create Notes into a document file
+!pip install python-docx
+from docx import Document
+from docx.shared import Inches
+
+# Mounts google drive for file access
 import fitz
 from google.colab import drive
 drive.mount('/content/gdrive')
 
+# Spacy will find parts of speech which will help making notes
 import spacy
-filename = "/content/gdrive/My Drive/Colab Notebooks/PDFfiles/file1.pdf"
-doc = fitz.open(filename) 
-page = doc.load_page(0)
-text = page.get_text()
-
+# They will help provide further language functions
+from __future__ import unicode_literals, print_function
+from spacy.lang.en import English 
+nlp = English()
+nlp.add_pipe(nlp.create_pipe('sentencizer')) # updated
+# They are required for similarity comparison
 from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
 model_name = 'bert-base-nli-mean-tokens'
 model = SentenceTransformer(model_name)
 
-from __future__ import unicode_literals, print_function
-from spacy.lang.en import English 
-nlp = English()
-nlp.add_pipe(nlp.create_pipe('sentencizer')) # updated
-doc = nlp(text)
-sentences = [sent.string.strip() for sent in doc.sents]
-sentence_vecs = model.encode(sentences)
-singleTimeSentence = []
-index = 0
+# Loads file from drive
+def getFile(fileName):
+  filePath = "/content/gdrive/My Drive/Colab Notebooks/PDFfiles/"+fileName+".pdf"
+  doc = fitz.open(filePath)
+  return doc
 
-for s in sentences:
-  single_vecs = model.encode(singleTimeSentence)
-  if index == 0 or index == 1:
-    singleTimeSentence.append(s)    
-  else:
-    similarityVal = cosine_similarity([sentence_vecs[index]], single_vecs[0:])
-    valDiff = str(similarityVal[0])
-    valDiff = valDiff.replace('[', '')
-    valDiff = valDiff.replace(']', '')
-    valDiffs = valDiff.split()
-    repeat = False
-    for x in valDiffs:
-      if(float(x) > 0.70):
-        repeat = True
-        break
-    if not repeat:
-      singleTimeSentence.append(s) 
-  index+=1
+# Returns a desired page text
+def getPageText(doc, pno): 
+  page = doc.load_page(pno)
+  text = page.get_text()
+  return text
 
-noteWriting = []
-linebyline = []
-for notes in singleTimeSentence:
-  individualLines = notes.split('\n')
-  for n in individualLines:
-    noteWriting.append(n)
+# Returns an array with individual sentences in array
+def getSentenceArray(text):
+  doc = nlp(text)
+  sentences = [sent.string.strip() for sent in doc.sents]
+  return sentences
 
-hyphen = False
-addition = ''
-index = 0
-for x in noteWriting:
-  if(x[0].isupper()):
-    if(not addition == ''):
-      linebyline.append(addition)
-      addition = ''
+# Returns structured sentences from PDF file and identifies Headers and Bullet Points
+def getBetterSentences(sentences):
+  noteWriting = []
+  linebyline = []
+  headerArray = []
+  indexArray = []
+  # bulletPoints = []
+  hyphen = False
+  headerTag = False
+  for notes in sentences:
+    individualLines = notes.split('\n')
+    for n in individualLines:
+      noteWriting.append(n)
   
-    if(x[-1] == "-"):
-      addition = addition + x.replace('-', '')
-      hyphen = True
+  addition = ''
+  index = 0
+  val = 0
+  for x in noteWriting:
+    if(x[0].isupper()):
+      if(addition != ''):
+        if(headerTag):
+          headerArray.append(addition)
+          indexArray.append(val)
+        else:
+          linebyline.append(addition)
+        val+=1
+      addition = ''
+      hyphen = False
+      headerTag = True 
+      if(x[-1] == "-"):
+        headerTag = False
+        addition = addition + x.replace('-', '')
+        hyphen = True
+      else:
+        addition = addition + x
+
     else:
-      addition = addition + x
+      headerTag = False
+      if(x[-1] == "-"):
+        if(not hyphen):
+          addition = addition + " "
+        hyphen = True
+        addition = addition + x.replace('-', '')
+      else:
+        if(not hyphen):
+          addition = addition + " "
+        addition = addition + x
+        hyphen = False
+    if (index == len(noteWriting)-1):
+      linebyline.append(" "+addition)
+    index+=1
+  arrayArray =[]
+  arrayArray.append(linebyline)
+  arrayArray.append(headerArray)
+  arrayArray.append(indexArray)
+  return arrayArray
 
-  else:
-    if(x[-1] == "-"):
-      if(not hyphen):
-        addition = addition + " "
-      addition = addition + x.replace('-', '')
+# Returns an array without similar meaning sentences
+def removeSimilarSentences(arrayArray):
+  linebyline = arrayArray[0]
+  headerArray = arrayArray[1]
+  indexArray = arrayArray[2]
+  sentence_vecs = model.encode(linebyline)
+  singleTimeSentence = []
+  index = 0
+  for sentence in linebyline:
+    single_vecs = model.encode(singleTimeSentence)
+    if(sentence not in headerArray):
+      if index != 0:
+        similarityVal = cosine_similarity([sentence_vecs[index]], single_vecs[0:])
+        valDiff = str(similarityVal[0])
+        valDiff = valDiff.replace('[', '')
+        valDiff = valDiff.replace(']', '')
+        valDiffs = valDiff.split()
+        repeat = False
+        for x in valDiffs:
+          if(float(x) > 0.70):
+            repeat = True
+            break
+        if not repeat:
+          singleTimeSentence.append(sentence)    
+      else:
+        singleTimeSentence.append(sentence)
+      index+=1
+      
+  index = 0
+  for x in indexArray:
+    singleTimeSentence.insert(x,headerArray[index])
+    index+=1
+  
+  return singleTimeSentence
+
+def findVocabWords(sentences, headerArray):
+  vocabWords = []
+  noNeeds =['the', 'a', 'an', 'he', 'she', 'this', 'they', 'them', 'any', 'not', 'its', 'all', 'each', 'these', 'our']
+  sp = spacy.load('en_core_web_sm')
+  for x in sentences:
+    x = sp(x)
+    for noun in x.noun_chunks:
+      noNeed = False
+      word = noun
+      for w in word:
+        if str(w).lower() in noNeeds:
+          noNeed = True
+          break
+      if(not noNeed):
+        if(str(word) not in vocabWords):
+          vocabWords.append(str(word))
+  
+  for heads in headerArray:
+    heads = sp(heads)
+    for noun in heads.noun_chunks:
+      if str(noun) in vocabWords:
+        vocabWords.remove(str(noun))
+  return vocabWords
+
+# Method for wriring to a document file
+def writeNote(sentences, fileName, vocabWords):
+  document = Document()
+  document.add_heading(sentences[0], 0)
+  index = 0
+  for lines in sentences:
+    if index == 0:
+      document.add_paragraph("")
+    elif lines[-1] == ".":
+      p = document.add_paragraph(lines)
     else:
-      if(not hyphen):
-        addition = addition + " "
-      addition = addition + x
-  if (index == len(noteWriting)-1):
-    linebyline.append(addition)
-  index+=1
+      document.add_heading(lines, level=2)
+    index+=1
+  document.add_page_break()
+  document.add_heading('Glossary', 0)
+  for word in vocabWords:
+    document.add_paragraph(word)
+  filePath = '/content/gdrive/My Drive/Colab Notebooks/PDFfiles/'+fileName+'.docx'
+  document.save(filePath)
 
-!pip install python-docx
-from docx import Document
-from docx.shared import Inches
+# Main method
+#fileName = input("Enter valid File Name...")
+doc = getFile('file1')
+# pno = input("Enter valid Page Number to Convert to Notes")
 
-document = Document()
-document.add_heading(linebyline[0], 0)
-index = 0
-for lines in linebyline:
-  if index == 0:
-    document.add_paragraph("")
-  elif lines[-1] == ".":
-    p = document.add_paragraph(lines)
-  else:
-    document.add_heading(lines, level=2)
-  index+=1
+# for character in pno:
+#   if not character.isdigit():
+#     print("Invalid Page Number. Run Program Again.")
 
-document.add_page_break()
-document.save('/content/gdrive/My Drive/Colab Notebooks/PDFfiles/file1.docx')
+text = getPageText(doc, 0)
+sentence = getSentenceArray(text)
+updatedSentence = getBetterSentences(sentence)
+uniqueSentence = removeSimilarSentences(updatedSentence)
+
+headerArray = updatedSentence[1]
+vocabWords = findVocabWords(uniqueSentence, headerArray)
+writeNote(uniqueSentence, fileName, vocabWords)
